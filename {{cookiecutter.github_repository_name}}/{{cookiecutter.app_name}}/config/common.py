@@ -1,13 +1,17 @@
 import os
 from os.path import join
-from distutils.util import strtobool
+from pathlib import Path
+
 import dj_database_url
 from configurations import Configuration
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from decouple import config
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Common(Configuration):
-
     INSTALLED_APPS = (
         'django.contrib.admin',
         'django.contrib.auth',
@@ -15,12 +19,13 @@ class Common(Configuration):
         'django.contrib.sessions',
         'django.contrib.messages',
         'django.contrib.staticfiles',
-
+        "django.contrib.sites",
 
         # Third party apps
-        'rest_framework',            # utilities for rest apis
+        'rest_framework',  # utilities for rest apis
         'rest_framework.authtoken',  # token authentication
-        'django_filters',            # for filtering rest endpoints
+        'django_filters',  # for filtering rest endpoints
+        'drf_spectacular', # OpenAPI 3 schema generator
 
         # Your apps
         '{{cookiecutter.app_name}}.users',
@@ -29,18 +34,21 @@ class Common(Configuration):
 
     # https://docs.djangoproject.com/en/2.0/topics/http/middleware/
     MIDDLEWARE = (
-        'django.middleware.security.SecurityMiddleware',
-        'django.contrib.sessions.middleware.SessionMiddleware',
-        'django.middleware.common.CommonMiddleware',
-        'django.middleware.csrf.CsrfViewMiddleware',
-        'django.contrib.auth.middleware.AuthenticationMiddleware',
-        'django.contrib.messages.middleware.MessageMiddleware',
-        'django.middleware.clickjacking.XFrameOptionsMiddleware',
+        "corsheaders.middleware.CorsMiddleware",
+        "django.middleware.security.SecurityMiddleware",
+        "django.contrib.sessions.middleware.SessionMiddleware",
+        "django.middleware.common.CommonMiddleware",
+        "django.middleware.csrf.CsrfViewMiddleware",
+        "django.contrib.auth.middleware.AuthenticationMiddleware",
+        "django.contrib.messages.middleware.MessageMiddleware",
+        "django.middleware.clickjacking.XFrameOptionsMiddleware",
+        "django.contrib.sites.middleware.CurrentSiteMiddleware",
     )
 
     ALLOWED_HOSTS = ["*"]
+    CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', True, cast=bool)
     ROOT_URLCONF = '{{ cookiecutter.app_name }}.urls'
-    SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+    SECRET_KEY = config('DJANGO_SECRET_KEY')
     WSGI_APPLICATION = '{{ cookiecutter.app_name }}.wsgi.application'
 
     # Email
@@ -50,12 +58,9 @@ class Common(Configuration):
         ('Author', '{{cookiecutter.email}}'),
     )
 
-    # Postgres
+    DATABASE_URL = config('DATABASE_URL', default=f'sqlite:///{BASE_DIR}/db.sqlite3')
     DATABASES = {
-        'default': dj_database_url.config(
-            default='postgres://postgres:@postgres:5432/postgres',
-            conn_max_age=int(os.getenv('POSTGRES_CONN_MAX_AGE', 600))
-        )
+        'default': dj_database_url.parse(DATABASE_URL)
     }
 
     # General
@@ -71,9 +76,9 @@ class Common(Configuration):
 
     # Static files (CSS, JavaScript, Images)
     # https://docs.djangoproject.com/en/2.0/howto/static-files/
-    STATIC_ROOT = os.path.normpath(join(os.path.dirname(BASE_DIR), 'static'))
-    STATICFILES_DIRS = []
-    STATIC_URL = '/static/'
+    STATIC_URL = config("STATIC_URL", "static/")
+    STATIC_ROOT = config("STATIC_ROOT", os.path.join(BASE_DIR, "statics"))
+    STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
     STATICFILES_FINDERS = (
         'django.contrib.staticfiles.finders.FileSystemFinder',
         'django.contrib.staticfiles.finders.AppDirectoriesFinder',
@@ -101,7 +106,7 @@ class Common(Configuration):
 
     # Set DEBUG to False as a default for safety
     # https://docs.djangoproject.com/en/dev/ref/settings/#debug
-    DEBUG = strtobool(os.getenv('DJANGO_DEBUG', 'no'))
+    DEBUG = config("DEBUG", default=True, cast=bool)
 
     # Password Validation
     # https://docs.djangoproject.com/en/2.0/topics/auth/passwords/#module-django.contrib.auth.password_validation
@@ -119,65 +124,68 @@ class Common(Configuration):
             'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
         },
     ]
-
+    ENVIRONMENT = 'local'
+    LOGGING_LEVEL = "INFO"
+    LOGGING_FORMAT = "{{"
+    "\"timestamp\": \"{asctime}\", "
+    "\"level\": \"{levelname}\", "
+    "\"threadName\": \"{threadName}\", "
+    "\"name\": \"{name}\", "
+    "\"request_id\": \"{request_id}\", "
+    "\"message\": \"{message}\""
+    "}}"
     # Logging
     LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'formatters': {
-            'django.server': {
-                '()': 'django.utils.log.ServerFormatter',
-                'format': '[%(server_time)s] %(message)s',
-            },
-            'verbose': {
-                'format': '%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s'
-            },
-            'simple': {
-                'format': '%(levelname)s %(message)s'
+        "version": 1,
+        "disable_existing_loggers": True,
+        "formatters": {
+            "console": {
+                "format": LOGGING_FORMAT,
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+                "style": "{"
             },
         },
-        'filters': {
-            'require_debug_true': {
-                '()': 'django.utils.log.RequireDebugTrue',
-            },
-        },
-        'handlers': {
-            'django.server': {
-                'level': 'INFO',
-                'class': 'logging.StreamHandler',
-                'formatter': 'django.server',
-            },
-            'console': {
-                'level': 'DEBUG',
-                'class': 'logging.StreamHandler',
-                'formatter': 'simple'
-            },
-            'mail_admins': {
-                'level': 'ERROR',
-                'class': 'django.utils.log.AdminEmailHandler'
+        "filters": {
+            "request": {
+                "()": "aggregator.logging.filters.RequestIdFilter"
             }
         },
-        'loggers': {
-            'django': {
-                'handlers': ['console'],
-                'propagate': True,
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "console",
+                "filters": ["request"]
             },
-            'django.server': {
-                'handlers': ['django.server'],
-                'level': 'INFO',
-                'propagate': False,
+        },
+        "root": {
+            "handlers": ["console"],
+            "level": LOGGING_LEVEL,
+        },
+        "loggers": {
+            "django": {
+                "handlers": ["console"],
+                "level": LOGGING_LEVEL,
+                "propagate": True,
             },
-            'django.request': {
-                'handlers': ['mail_admins', 'console'],
-                'level': 'ERROR',
-                'propagate': False,
+            "django.server": {
+                "handlers": ["django.server", "console"],
+                "level": LOGGING_LEVEL,
+                "propagate": False,
             },
-            'django.db.backends': {
-                'handlers': ['console'],
-                'level': 'INFO'
+            "django.request": {
+                "handlers": ["console"],
+                "level": LOGGING_LEVEL,
+                "propagate": False,
             },
-        }
+            "django.db.backends": {
+                "handlers": ["console"],
+                "level": LOGGING_LEVEL,
+            },
+
+        },
     }
+
+    SITE_ID = config('SITE_ID', default=1, cast=int)
 
     # Custom user app
     AUTH_USER_MODEL = 'users.User'
@@ -199,3 +207,20 @@ class Common(Configuration):
             'rest_framework.authentication.TokenAuthentication',
         )
     }
+
+    if not DEBUG:
+        sentry_sdk.init(
+            dsn="https://30421a6213705e4ccb81a21d44abeb2d@o1167969.ingest.us.sentry.io/4507655974354944",
+            integrations=[DjangoIntegration()],
+            environment=ENVIRONMENT,
+            # If you wish to associate users to errors (assuming you are using
+            # django.contrib.auth) you may enable sending PII data.
+            send_default_pii=True,
+            # Set traces_sample_rate to 1.0 to capture 100%
+            # of transactions for performance monitoring.
+            # traces_sample_rate=1.0,
+            # Set profiles_sample_rate to 1.0 to profile 100%
+            # of sampled transactions.
+            # We recommend adjusting this value in production.
+            # profiles_sample_rate=1.0,
+        )

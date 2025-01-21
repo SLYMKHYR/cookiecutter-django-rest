@@ -1,0 +1,45 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    restart: always
+    hostname: rabbitmq
+    container_name: rabbitmq
+    expose:
+      - "5672"
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    logging:
+      options:
+        max-size: 10m
+    environment:
+      RABBITMQ_DEFAULT_USER: "rabbitmq"
+      RABBITMQ_DEFAULT_PASS: "rabbitmq"
+      RABBITMQ_DEFAULT_VHOST: "/"
+    networks:
+      - {{cookiecutter.app_name}}-network
+  db:
+    hostname: db
+    restart: always
+    container_name: db
+    image: postgres:13
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - {{cookiecutter.app_name}}-network
+    external_links:
+      - api:pi
+      - rabbitmq:rabbitmq
+      - celery:celery
+volumes:
+  postgres_data:
+
+networks:
+  {{cookiecutter.app_name}}-network:
+    driver: bridge

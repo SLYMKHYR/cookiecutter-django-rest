@@ -1,0 +1,43 @@
+services:
+  api:
+    hostname: aggregator
+    container_name: api
+    command: [ "runserver" ]
+    restart: always
+    image: {{cookiecutter.app_name}}:latest
+    environment:
+      SWAGGER_JSON: /app/schema.yml
+      DATABASE_URL: "postgresql://postgres:postgres@db/{{cookiecutter.app_name}}"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+      - statics:/app/statics
+    networks:
+      - network
+    external_links:
+      - db:db
+      - celery:celery
+
+  celery:
+    image: {{cookiecutter.app_name}}:latest
+    container_name: celery
+    command: [ "celery", "-B" ]
+    volumes:
+      - ./:/app
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@db/{{cookiecutter.app_name}}"
+      ENVIRONMENT: local
+    external_links:
+      - rabbitmq:rabbitmq
+      - db:db
+    networks:
+      - {{cookiecutter.app_name}}-network
+
+networks:
+  {{cookiecutter.app_name}}-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  statics:
