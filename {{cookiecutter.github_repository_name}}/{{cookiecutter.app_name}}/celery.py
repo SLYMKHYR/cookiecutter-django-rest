@@ -6,8 +6,8 @@ from celery.utils.log import get_task_logger
 
 logger: Logger = get_task_logger(__name__)
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', "{{ cookiecutter.app_name }}.config")
-app = Celery('aggregator')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', "{{ cookiecutter.app_name }}.settings")
+app = Celery("{{ cookiecutter.app_name }}")
 
 # Using a string here means the worker don't have to serialize
 # the configuration object to child processes.

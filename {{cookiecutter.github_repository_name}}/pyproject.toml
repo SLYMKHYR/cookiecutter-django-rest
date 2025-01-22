@@ -2,6 +2,9 @@
 name = "{{cookiecutter.github_repository_name}}"
 version = "0.1.0"
 description = "{{cookiecutter.description}}"
+packages = [
+    { include = "{{cookiecutter.app_name}}" }
+]
 authors = ["{{cookiecutter.github_username}} <{{cookiecutter.email}}>"]
 readme = "README.md"
 
@@ -14,6 +17,7 @@ newrelic = "^10.3.1"
 setuptools = "^75.6.0"
 requests = "^2.31.0"
 pillow = "^11.1.0"
+spectacular = "^0.28.0"
 
 psycopg2-binary = "^2.9.10"
 dj-database-url = "^2.3.0"

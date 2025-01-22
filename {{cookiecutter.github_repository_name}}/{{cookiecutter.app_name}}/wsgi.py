@@ -5,9 +5,6 @@ For more information on this file, see
 https://docs.djangoproject.com/en/2.0/howto/deployment/wsgi/gunicorn/
 """
 import os
-
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "{{ cookiecutter.app_name }}.config")
-os.environ.setdefault("DJANGO_CONFIGURATION", "Production")
-
-from configurations.wsgi import get_wsgi_application  # noqa
+from django.core.wsgi import get_wsgi_application
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "{{ cookiecutter.app_name }}.settings")
 application = get_wsgi_application()
